@@ -51,4 +51,33 @@ function render(){
    <div class="row" style="margin-top:auto">${s.status=='offline'?`<button onclick="go('${id}',1)">▶</button>`:`<button class="s" onclick="go('${id}',0)">■</button>`}
    <button class="s" onclick="win('${id}')">🪟 Окно</button><button class="s" onclick="tg('${id}')">⚙ Сервер</button><button class="d" onclick="delAcc('${id}')">✕</button></div></div>`}).join('')||'<div class="m">Добавь первый аккаунт</div>'}</div>
   <h2>СОЛО-МИРЫ (локальный сервер на ПК)</h2><div class="grid">${Object.entries(wd).map(([id,w])=>{const s=ws[id]?.status||'stopped';return `<div class="c ${s}"><div class="top"><b>${esc(w.name)}</b><span class="tag">${esc(w.version)}</span></div>
-   <div><span class="dot"></span>${ST[s]} <span class="m">${esc(ws[id]?.msg)}</span></div><div class="row">${s=='stopped'||s=='error'?`<but
+   <div><span class="dot"></span>${ST[s]} <span class="m">${esc(ws[id]?.msg)}</span></div><div class="row">${s=='stopped'||s=='error'?`<button onclick="wc('${id}','wstart')">▶</button>`:`<button class="s" onclick="wc('${id}','wstop')">■</button>`}<button class="d" onclick="delW('${id}')">✕</button></div></div>`}).join('')}
+   <div class="c"><button class="s" onclick="addW()">＋ Новый мир</button></div></div>`;
+  if(open&&$('#dlg').open&&$('#dlg').dataset.w==open){const s=st[open]||{},c=$('#ch');if(c){const bot=c.scrollTop+c.clientHeight>=c.scrollHeight-20;c.textContent=(s.chat||[]).join('\n');if(bot)c.scrollTop=c.scrollHeight;
+    $('#wi').innerHTML=`${ST[s.status]||''} · ❤ ${s.health??'?'} · 🍗 ${s.food??'?'}${s.pos?' · 📍 '+s.pos.join(' '):''}${s.dim?' · '+esc(s.dim):''}`}}
+}
+const D=h=>{$('#dlg').dataset.w='';$('#dlg').innerHTML=h;$('#dlg').showModal()};
+Object.assign(window,{
+ signOutX:()=>signOut(auth).then(()=>location.reload()),
+ unpair:async()=>{if(confirm('Отвязать ПК? Боты на нём остановятся, агент отключится.')){for(const id of pairs)await deleteDoc(doc(db,'pairings',id))}},
+ pair:()=>D(`<h3>Подключить ПК</h3><p class="m">Запусти агент на ПК, он покажет ID. Вставь его сюда (один раз, привязка сохраняется навсегда).</p><input id="aid" placeholder="ID агента"><div class="err" id="er"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="doPair()">Привязать</button></div>`),
+ doPair:async()=>{const v=$('#aid').value.trim();if(v.length<20)return $('#er').textContent='Неверный ID';await setDoc(doc(db,'pairings',v),{ownerUid:U});dlg.close()},
+ addAcc:()=>D(`<h3>Новый аккаунт</h3><label>Тип</label><select id="ty"><option value="offline">Пиратка (ник)</option><option value="microsoft">Microsoft (вход по коду)</option></select><label>Ник / почта</label><input id="nm"><div class="err" id="er"></div><p class="m">Сервер можно выбрать позже кнопкой ⚙.</p><div class="row" style="justify-content:flex-end"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="doAdd()">Добавить</button></div>`),
+ doAdd:async()=>{const n=$('#nm').value.trim(),t=$('#ty').value;if(t=='offline'&&!/^\w{3,16}$/.test(n))return $('#er').textContent='Ник: 3–16 символов, латиница/цифры/_';if(!n)return $('#er').textContent='Введи имя';
+  await setDoc(dd('accounts',uid8()),{type:t,name:n,target:null,autostart:false});dlg.close()},
+ tg:id=>{const t=acc[id].target||{kind:'server'};D(`<h3>Куда заходит ${esc(acc[id].name)}</h3><select id="k" onchange="kx()"><option value="server">Сервер</option><option value="world">Соло-мир</option></select>
+  <div id="sv"><label>Адрес</label><input id="h" value="${esc(t.host)}"><div class="row"><div style="flex:1"><label>Порт</label><input id="p" value="${esc(t.port||25565)}"></div><div style="flex:1"><label>Версия (необяз.)</label><input id="v" value="${esc(t.version)}"></div></div></div>
+  <div id="wo" style="display:none"><label>Мир</label><select id="wl">${Object.entries(wd).map(([i,w])=>`<option value="${i}">${esc(w.name)}</option>`)}</select></div>
+  <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="saveT('${id}')">Сохранить</button></div>`);$('#k').value=t.kind;kx()},
+ kx:()=>{const w=$('#k').value=='world';$('#sv').style.display=w?'none':'';$('#wo').style.display=w?'':'none'},
+ saveT:async id=>{const w=$('#k').value=='world';await setDoc(dd('accounts',id),{...acc[id],target:w?{kind:'world',worldId:$('#wl').value}:{kind:'server',host:$('#h').value.trim(),port:+$('#p').value||25565,version:$('#v').value.trim()}});dlg.close()},
+ go:async(id,on)=>{await setDoc(dd('accounts',id),{...acc[id],autostart:!!on});cmd({kind:on?'start':'stop',id})},
+ delAcc:async id=>{if(confirm('Удалить аккаунт?')){await deleteDoc(dd('accounts',id))}},
+ win:id=>{open=id;D(`<div class="top"><h3 style="margin:0">${esc(acc[id].name)}</h3><button class="s" onclick="dlg.close()">✕</button></div><div class="m" id="wi"></div><div class="chat" id="ch"></div>
+  <div class="row"><input id="msg" style="flex:1" placeholder="Сообщение или /команда" onkeydown="if(event.key=='Enter')snd('${id}')"><button onclick="snd('${id}')">Отправить</button></div>`);$('#dlg').dataset.w=id;render()},
+ snd:id=>{const v=$('#msg').value;if(v){cmd({kind:'chat',id,text:v});$('#msg').value=''}},
+ addW:()=>D(`<h3>Новый соло-мир</h3><p class="m">Нужна Java 17/21 на ПК. Лучше версия 1.20+. Сервер скачается с Mojang, запуская его, ты принимаешь <a style="color:var(--a)" target="_blank" href="https://aka.ms/MinecraftEULA">EULA</a>.</p><label>Название</label><input id="wn" value="Мой мир"><label>Версия</label><input id="wv" value="1.20.4"><label>Порт</label><input id="wp" value="25570"><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="doW()">Создать (принимаю EULA)</button></div>`),
+ doW:async()=>{await setDoc(dd('worlds',uid8()),{name:$('#wn').value,version:$('#wv').value.trim(),port:+$('#wp').value||25570});dlg.close()},
+ wc:(id,kind)=>cmd({kind,id}),delW:async id=>{if(confirm('Удалить мир из списка? Файлы мира на ПК останутся.'))await deleteDoc(doc(db,'users',U,'worlds',id))}
+});
+</script></body></html>
