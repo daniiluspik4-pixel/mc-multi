@@ -81,6 +81,20 @@ function run(U,me){
     bot.on('end',()=>{clearInterval(r.afk);r.bot=null;r.code=null;r.status='offline';log(id,'Отключён');
       if(r.manual&&A[id]){r.status='reconnecting';r.timer=setTimeout(()=>startBot(id),15000)}});
   }
+  async function msLogin(id){
+    const a=A[id],r=rt(id);if(!a||a.type!=='microsoft'||r.login)return;
+    r.login=true;log(id,'Вход Microsoft…');
+    try{
+      const {Authflow,Titles}=require('prismarine-auth');
+      const f=new Authflow(a.name,path.join(D,'auth',id),{authTitle:Titles.MinecraftNintendoSwitch,flow:'live',deviceType:'Nintendo'},
+        c=>{r.code={code:c.user_code,url:c.verification_uri};dirty.add(id);log(id,'Нужен вход Microsoft')});
+      const t=await f.getMinecraftJavaToken({fetchProfile:true});
+      r.code=null;const nm=t.profile&&t.profile.name||null;
+      log(id,'Вход выполнен'+(nm?': '+nm:''));
+      await setDoc(P('accounts',id),{loggedIn:true,mcName:nm},{merge:true});
+    }catch(e){r.code=null;log(id,'Ошибка входа: '+e.message)}
+    r.login=false;dirty.add(id);
+  }
   function stopBot(id){const r=rt(id);r.manual=false;clearTimeout(r.timer);if(r.bot)r.bot.quit();else r.status='offline';dirty.add(id)}
   async function startWorld(id){
     const w=W[id];if(!w||WR[id]?.proc)return;
@@ -115,6 +129,7 @@ function run(U,me){
   onSnapshot(collection(db,'users',U,'cmds'),s=>s.docChanges().forEach(c=>{
     if(c.type!=='added')return;const m=c.doc.data();deleteDoc(c.doc.ref);
     if(m.kind==='start')startBot(m.id);else if(m.kind==='stop')stopBot(m.id);
+    else if(m.kind==='login')setTimeout(()=>msLogin(m.id),1500);
     else if(m.kind==='chat'){try{R[m.id]?.bot?.chat(String(m.text).slice(0,256))}catch{}}
     else if(m.kind==='wstart')startWorld(m.id);else if(m.kind==='wstop')stopWorld(m.id);
   }));
