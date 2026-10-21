@@ -1,9 +1,11 @@
 const fs=require('fs'),path=require('path'),os=require('os'),cp=require('child_process'),crypto=require('crypto');
 const {pipeline}=require('stream/promises'),{Readable}=require('stream');
 const {initializeApp}=require('firebase/app');
-const {getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword}=require('firebase/auth');
-const {initializeFirestore,doc,collection,onSnapshot,setDoc,deleteDoc}=require('firebase/firestore');
+const {getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut}=require('firebase/auth');
+const {initializeFirestore,doc,collection,onSnapshot,setDoc,getDoc,deleteDoc}=require('firebase/firestore');
 const mineflayer=require('mineflayer');
+process.on('uncaughtException',e=>console.error('Ошибка:',e.message));
+process.on('unhandledRejection',e=>console.error('Ошибка:',e&&e.message||e));
 const D=path.join(__dirname,'data');fs.mkdirSync(D,{recursive:true});
 const CF=path.join(D,'config.json'),LIMIT=+process.env.MC_LIMIT_MB||200;
 const fb=JSON.parse(fs.readFileSync(path.join(__dirname,'..','docs','firebase-config.json')));
@@ -11,17 +13,37 @@ let C={};try{C=JSON.parse(fs.readFileSync(CF))}catch{}
 const saveC=()=>fs.writeFileSync(CF,JSON.stringify(C));
 const app=initializeApp(fb),auth=getAuth(app),db=initializeFirestore(app,{experimentalForceLongPolling:true});
 const mem=()=>process.memoryUsage().rss/1048576;
-(async()=>{
-  if(!C.email){C.email='agent-'+crypto.randomBytes(5).toString('hex')+'@mcmulti.local';C.pass=crypto.randomBytes(18).toString('hex');
-    await createUserWithEmailAndPassword(auth,C.email,C.pass);saveC()}
-  else await signInWithEmailAndPassword(auth,C.email,C.pass);
-  const me=auth.currentUser.uid;
-  if(!C.owner){console.log('\nID АГЕНТА (вставь на сайте в «Подключить ПК»):\n'+me+'\n');
-    await new Promise(r=>onSnapshot(doc(db,'pairings',me),s=>{if(s.exists()){C.owner=s.data().ownerUid;saveC();r()}}))}
-  run(C.owner,me);
-})().catch(e=>{console.error(e);process.exit(1)});
 
-function run(U){
+async function boot(){
+  if(C.email){
+    try{await signInWithEmailAndPassword(auth,C.email,C.pass)}
+    catch(e){console.log('Старый ключ недействителен, создаю новый…');C={};saveC()}
+  }
+  if(!C.email){
+    C.email='agent-'+crypto.randomBytes(5).toString('hex')+'@mcmulti.local';
+    C.pass=crypto.randomBytes(18).toString('hex');
+    await createUserWithEmailAndPassword(auth,C.email,C.pass);saveC();
+  }
+  const me=auth.currentUser.uid;
+  if(C.owner){
+    const s=await getDoc(doc(db,'pairings',me));
+    if(!s.exists()||s.data().ownerUid!==C.owner){
+      console.log('Привязка недействительна (ПК отвязан на сайте). Выдаю новый ключ…');
+      C={};saveC();await signOut(auth);return boot();
+    }
+  }
+  if(!C.owner){
+    console.log('\n==============================================');
+    console.log('НОВЫЙ КЛЮЧ (ID АГЕНТА) — вставь на сайте в «Подключить ПК»:\n');
+    console.log(me);
+    console.log('\n==============================================\n');
+    await new Promise(r=>onSnapshot(doc(db,'pairings',me),s=>{if(s.exists()){C.owner=s.data().ownerUid;saveC();r()}}));
+  }
+  run(C.owner,me);
+}
+boot().catch(e=>{console.error(e);process.exit(1)});
+
+function run(U,me){
   const P=(...p)=>doc(db,'users',U,...p);
   const A={},W={},R={},WR={},dirty=new Set();
   const rt=id=>R[id]??={status:'offline',log:[],chat:[]};
@@ -92,5 +114,13 @@ function run(U){
     setDoc(P('state',id),{status:r.status,health:r.health??null,food:r.food??null,pos:r.pos??null,dim:r.dim??null,code:r.code??null,chat:r.chat,log:r.log,t:Date.now()});}
     dirty.clear()},3000);
   setInterval(()=>setDoc(P('meta','agent'),{mem:+mem().toFixed(0),limit:LIMIT,t:Date.now(),host:os.hostname(),bots:Object.values(R).filter(r=>r.bot).length}),10000);
+  onSnapshot(doc(db,'pairings',me),s=>{
+    if(!s.exists()&&!s.metadata.fromCache){
+      console.log('ПК отвязан на сайте. Останавливаю ботов и сбрасываю ключ…');
+      Object.keys(R).forEach(stopBot);Object.keys(W).forEach(stopWorld);
+      C={};saveC();
+      setTimeout(()=>process.exit(0),4000);
+    }
+  });
   console.log('Агент работает, привязан к',U);
 }
