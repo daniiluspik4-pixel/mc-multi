@@ -36,7 +36,7 @@ onAuthStateChanged(auth,u=>{if(!u)return;U=u.uid;
   onSnapshot(query(collection(db,'pairings'),where('ownerUid','==',U)),s=>{pairs=s.docs.map(d=>d.id);render()});
   setInterval(render,5000)});
 const bar=(v,max,c)=>`<div class="bar"><i style="width:${Math.max(0,Math.min(100,(v??0)/max*100))}%;background:${c}"></i></div>`;
-const tgt=a=>!a.target?'Сервер не выбран':a.target.kind==='world'?'Мир: '+esc(wd[a.target.worldId]?.name||'?'):esc(a.target.host)+':'+(a.target.port||25565);
+const tgt=a=>!a.target?'Сервер не выбран':a.target.kind==='world'?'Мир: '+esc(wd[a.target.worldId]?.name||'?'):esc(a.target.host)+(a.target.port?':'+a.target.port:'')+(a.target.version?' · '+esc(a.target.version):'');
 function render(){
   if(!U)return;
   if($('#dlg').open&&!$('#dlg').dataset.w){return}
@@ -66,11 +66,11 @@ Object.assign(window,{
  doAdd:async()=>{const n=$('#nm').value.trim(),t=$('#ty').value;if(t=='offline'&&!/^\w{3,16}$/.test(n))return $('#er').textContent='Ник: 3–16 символов, латиница/цифры/_';if(!n)return $('#er').textContent='Введи имя';
   await setDoc(dd('accounts',uid8()),{type:t,name:n,target:null,autostart:false});dlg.close()},
  tg:id=>{const t=acc[id].target||{kind:'server'};D(`<h3>Куда заходит ${esc(acc[id].name)}</h3><select id="k" onchange="kx()"><option value="server">Сервер</option><option value="world">Соло-мир</option></select>
-  <div id="sv"><label>Адрес</label><input id="h" value="${esc(t.host)}"><div class="row"><div style="flex:1"><label>Порт</label><input id="p" value="${esc(t.port||25565)}"></div><div style="flex:1"><label>Версия (необяз.)</label><input id="v" value="${esc(t.version)}"></div></div></div>
+  <div id="sv"><label>Адрес (можно сразу с портом: host:25570)</label><input id="h" value="${esc(t.host)}" placeholder="play.example.com"><div class="row"><div style="flex:1"><label>Порт (пусто = авто)</label><input id="p" value="${esc(t.port||'')}" placeholder="авто" inputmode="numeric"></div><div style="flex:1"><label>Версия (пусто = авто)</label><input id="v" value="${esc(t.version||'')}" placeholder="авто" list="vers"><datalist id="vers"><option value="1.21.11"><option value="1.21.8"><option value="1.21.4"><option value="1.21.1"><option value="1.20.4"><option value="1.20.1"><option value="1.19.4"><option value="1.18.2"><option value="1.17.1"><option value="1.16.5"><option value="1.15.2"><option value="1.14.4"><option value="1.13.2"><option value="1.12.2"><option value="1.8.9"></datalist></div></div></div>
   <div id="wo" style="display:none"><label>Мир</label><select id="wl">${Object.entries(wd).map(([i,w])=>`<option value="${i}">${esc(w.name)}</option>`)}</select></div>
   <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="saveT('${id}')">Сохранить</button></div>`);$('#k').value=t.kind;kx()},
  kx:()=>{const w=$('#k').value=='world';$('#sv').style.display=w?'none':'';$('#wo').style.display=w?'':'none'},
- saveT:async id=>{const w=$('#k').value=='world';await setDoc(dd('accounts',id),{...acc[id],target:w?{kind:'world',worldId:$('#wl').value}:{kind:'server',host:$('#h').value.trim(),port:+$('#p').value||25565,version:$('#v').value.trim()}});dlg.close()},
+ saveT:async id=>{const w=$('#k').value=='world';await setDoc(dd('accounts',id),{...acc[id],target:w?{kind:'world',worldId:$('#wl').value}:{kind:'server',host:$('#h').value.trim(),port:+$('#p').value||null,version:$('#v').value.trim()}});dlg.close()},
  go:async(id,on)=>{await setDoc(dd('accounts',id),{...acc[id],autostart:!!on});cmd({kind:on?'start':'stop',id})},
  delAcc:async id=>{if(confirm('Удалить аккаунт?')){await deleteDoc(dd('accounts',id))}},
  win:id=>{open=id;D(`<div class="top"><h3 style="margin:0">${esc(acc[id].name)}</h3><button class="s" onclick="dlg.close()">✕</button></div><div class="m" id="wi"></div><div class="chat" id="ch"></div>
