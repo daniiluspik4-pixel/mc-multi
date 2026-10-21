@@ -1,1 +1,1 @@
-{"name":"mcm-agent","version":"2.0.0","main":"agent.js","dependencies":{"firebase":"^10.12.2","mineflayer":"^4.23.0"}}
+{"name":"mcm-agent","version":"2.1.0","main":"agent.js","dependencies":{"firebase":"^10.12.2","mineflayer":"^4.23.0","prismarine-auth":">=2.0.0"}}
