@@ -13,6 +13,9 @@ let C={};try{C=JSON.parse(fs.readFileSync(CF))}catch{}
 const saveC=()=>fs.writeFileSync(CF,JSON.stringify(C));
 const app=initializeApp(fb),auth=getAuth(app),db=initializeFirestore(app,{experimentalForceLongPolling:true});
 const mem=()=>process.memoryUsage().rss/1048576;
+let SUP=[];try{SUP=require('minecraft-protocol').supportedVersions||[]}catch{}
+console.log('mineflayer поддерживает версии:',SUP.length?SUP[0]+' … '+SUP[SUP.length-1]:'(список недоступен)');
+const hint=m=>/unsupported protocol|No data available|not supported/i.test(m)?m+' — эта версия сервера пока не поддерживается mineflayer. Поддерживается до '+(SUP[SUP.length-1]||'1.21.x'):m;
 
 async function boot(){
   if(C.email){
@@ -54,10 +57,15 @@ function run(U,me){
     const t=a.target;if(!t){log(id,'Сервер не выбран — задай его на сайте');return}
     let host,port,version=t.version;
     if(t.kind==='world'){const w=W[t.worldId];if(!w||WR[w.id]?.status!=='running'){log(id,'Мир не запущен');return}host='127.0.0.1';port=w.port;version=w.version}
-    else{host=t.host;port=+t.port||25565}
+    else{host=String(t.host||'').trim();const hp=host.match(/^(.+):(\d{1,5})$/);
+      if(hp){host=hp[1];port=+hp[2]}else port=+t.port||0}
+    if(!host){log(id,'Адрес сервера пустой');return}
+    version=version?String(version).trim():'';
+    if(version&&SUP.length&&!SUP.includes(version))log(id,'Версия '+version+' нет в списке mineflayer, пробую всё равно');
     if(mem()>LIMIT-25){log(id,'Лимит ОЗУ — запуск отменён');return}
     r.manual=true;r.status='connecting';dirty.add(id);
-    const o={host,port,username:a.name,viewDistance:'tiny',hideErrors:true,checkTimeoutInterval:60000,auth:'offline'};
+    const o={host,username:a.name,viewDistance:'tiny',hideErrors:true,checkTimeoutInterval:60000,auth:'offline'};
+    if(port)o.port=port;
     if(version)o.version=version;
     if(a.type==='microsoft'){o.auth='microsoft';o.profilesFolder=path.join(D,'auth',id);
       o.onMsaCode=c=>{r.code={code:c.user_code,url:c.verification_uri};log(id,'Нужен вход Microsoft')}}
@@ -69,7 +77,7 @@ function run(U,me){
     bot.on('messagestr',m=>{r.chat.push(m.slice(0,200));r.chat=r.chat.slice(-40);dirty.add(id)});
     bot.on('move',()=>{const p=bot.entity.position;r.pos=[p.x|0,p.y|0,p.z|0];r.dim=bot.game.dimension});
     bot.on('kicked',x=>log(id,'Кик: '+JSON.stringify(x).slice(0,90)));
-    bot.on('error',e=>log(id,'Ошибка: '+e.message));
+    bot.on('error',e=>log(id,'Ошибка: '+hint(e.message)));
     bot.on('end',()=>{clearInterval(r.afk);r.bot=null;r.code=null;r.status='offline';log(id,'Отключён');
       if(r.manual&&A[id]){r.status='reconnecting';r.timer=setTimeout(()=>startBot(id),15000)}});
   }
@@ -85,7 +93,7 @@ function run(U,me){
         await pipeline(Readable.fromWeb(res.body),fs.createWriteStream(jar))}
       fs.writeFileSync(path.join(dir,'eula.txt'),'eula=true\n');
       const sp=path.join(dir,'server.properties');
-      if(!fs.existsSync(sp))fs.writeFileSync(sp,`online-mode=false\nserver-port=${w.port}\nmotd=MC Multi\n`);
+      if(!fs.existsSync(sp))fs.writeFileSync(sp,`online-mode=false\nserver-ip=127.0.0.1\nserver-port=${w.port}\nmotd=MC Multi\n`);
       setW(id,'starting','Запуск…');
       const p=cp.spawn('java',['-Xmx'+(w.ram||1024)+'M','-jar',jar,'nogui'],{cwd:dir});
       WR[id].proc=p;
