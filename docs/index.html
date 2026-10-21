@@ -19,11 +19,11 @@ label{display:block;font-size:13px;color:var(--m);margin:9px 0 3px}input,select{
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {getFirestore,doc,collection,onSnapshot,setDoc,addDoc,deleteDoc} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import {getFirestore,doc,collection,onSnapshot,setDoc,addDoc,deleteDoc,query,where} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 const app=initializeApp(await (await fetch('./firebase-config.json')).json()),auth=getAuth(app),db=getFirestore(app);
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid8=()=>Math.random().toString(36).slice(2,9);
-let U,acc={},st={},wd={},ws={},meta=null,open=null;
+let U,acc={},st={},wd={},ws={},meta=null,open=null,pairs=[];
 const ST={online:'В сети',offline:'Выключен',connecting:'Подключение…',reconnecting:'Переподключение…',running:'Работает',stopped:'Остановлен',starting:'Запуск…',downloading:'Скачивание…',error:'Ошибка'};
 const col=(n)=>collection(db,'users',U,n),dd=(n,id)=>doc(db,'users',U,n,id);
 const cmd=o=>addDoc(col('cmds'),o);
@@ -32,14 +32,17 @@ $('#gl').onclick=()=>signInWithPopup(auth,new GoogleAuthProvider());
 onAuthStateChanged(auth,u=>{if(!u)return;U=u.uid;
   const sub=(n,f)=>onSnapshot(col(n),s=>{const o={};s.forEach(d=>o[d.id]=d.data());f(o);render()});
   sub('accounts',o=>acc=o);sub('state',o=>st=o);sub('worlds',o=>wd=o);sub('wstate',o=>ws=o);
-  onSnapshot(dd('meta','agent'),s=>{meta=s.data();render()});setInterval(render,5000)});
+  onSnapshot(dd('meta','agent'),s=>{meta=s.data();render()});
+  onSnapshot(query(collection(db,'pairings'),where('ownerUid','==',U)),s=>{pairs=s.docs.map(d=>d.id);render()});
+  setInterval(render,5000)});
 const bar=(v,max,c)=>`<div class="bar"><i style="width:${Math.max(0,Math.min(100,(v??0)/max*100))}%;background:${c}"></i></div>`;
 const tgt=a=>!a.target?'Сервер не выбран':a.target.kind==='world'?'Мир: '+esc(wd[a.target.worldId]?.name||'?'):esc(a.target.host)+':'+(a.target.port||25565);
 function render(){
   if(!U)return;
-  const on=meta&&Date.now()-meta.t<30000;
-  $('#app').innerHTML=`<header><h1>⛏ MC Multi</h1><div class="row"><button class="s" onclick="pair()">🖥 Подключить ПК</button><button onclick="addAcc()">＋ Аккаунт</button><button class="s" onclick="signOutX()">Выйти</button></div></header>
-  <div class="box" style="margin-top:14px"><span class="${on?'online':''}"><span class="dot"></span></span>${on?`ПК онлайн: ${esc(meta.host)} · ботов ${meta.bots} · память ${meta.mem}/${meta.limit} МБ`:'ПК не на связи (запусти агент на компьютере)'}</div>
+  if($('#dlg').open&&!$('#dlg').dataset.w){return}
+  const on=meta&&Date.now()-meta.t<30000,paired=pairs.length>0;
+  $('#app').innerHTML=`<header><h1>⛏ MC Multi</h1><div class="row">${paired?'<button class="d" onclick="unpair()">Отвязать ПК</button>':'<button onclick="pair()">🖥 Подключить ПК</button>'}<button onclick="addAcc()">＋ Аккаунт</button><button class="s" onclick="signOutX()">Выйти</button></div></header>
+  <div class="box" style="margin-top:14px"><span class="${on&&paired?'online':''}"><span class="dot"></span></span>${!paired?'ПК не привязан — нажми «Подключить ПК»':on?`ПК привязан и онлайн: ${esc(meta.host)} · ботов ${meta.bots} · память ${meta.mem}/${meta.limit} МБ`:'ПК привязан, но сейчас не на связи (запусти агент)'}</div>
   <h2>АККАУНТЫ</h2><div class="grid">${Object.entries(acc).map(([id,a])=>{const s=st[id]||{status:'offline'};return `<div class="c ${s.status}">
    <div class="top"><b>${esc(a.name)}</b><span class="tag">${a.type=='microsoft'?'Microsoft':'Пиратка'}</span></div>
    <div><span class="dot"></span>${ST[s.status]||s.status} <span class="m">· ${tgt(a)}</span></div>
@@ -56,7 +59,8 @@ function render(){
 const D=h=>{$('#dlg').dataset.w='';$('#dlg').innerHTML=h;$('#dlg').showModal()};
 Object.assign(window,{
  signOutX:()=>signOut(auth).then(()=>location.reload()),
- pair:()=>D(`<h3>Подключить ПК</h3><p class="m">Запусти агент на ПК, он покажет ID. Вставь его сюда (один раз).</p><input id="aid" placeholder="ID агента"><div class="err" id="er"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="doPair()">Привязать</button></div>`),
+ unpair:async()=>{if(confirm('Отвязать ПК? Боты на нём остановятся, агент отключится.')){for(const id of pairs)await deleteDoc(doc(db,'pairings',id))}},
+ pair:()=>D(`<h3>Подключить ПК</h3><p class="m">Запусти агент на ПК, он покажет ID. Вставь его сюда (один раз, привязка сохраняется навсегда).</p><input id="aid" placeholder="ID агента"><div class="err" id="er"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="doPair()">Привязать</button></div>`),
  doPair:async()=>{const v=$('#aid').value.trim();if(v.length<20)return $('#er').textContent='Неверный ID';await setDoc(doc(db,'pairings',v),{ownerUid:U});dlg.close()},
  addAcc:()=>D(`<h3>Новый аккаунт</h3><label>Тип</label><select id="ty"><option value="offline">Пиратка (ник)</option><option value="microsoft">Microsoft (вход по коду)</option></select><label>Ник / почта</label><input id="nm"><div class="err" id="er"></div><p class="m">Сервер можно выбрать позже кнопкой ⚙.</p><div class="row" style="justify-content:flex-end"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="doAdd()">Добавить</button></div>`),
  doAdd:async()=>{const n=$('#nm').value.trim(),t=$('#ty').value;if(t=='offline'&&!/^\w{3,16}$/.test(n))return $('#er').textContent='Ник: 3–16 символов, латиница/цифры/_';if(!n)return $('#er').textContent='Введи имя';
@@ -68,12 +72,4 @@ Object.assign(window,{
  kx:()=>{const w=$('#k').value=='world';$('#sv').style.display=w?'none':'';$('#wo').style.display=w?'':'none'},
  saveT:async id=>{const w=$('#k').value=='world';await setDoc(dd('accounts',id),{...acc[id],target:w?{kind:'world',worldId:$('#wl').value}:{kind:'server',host:$('#h').value.trim(),port:+$('#p').value||25565,version:$('#v').value.trim()}});dlg.close()},
  go:async(id,on)=>{await setDoc(dd('accounts',id),{...acc[id],autostart:!!on});cmd({kind:on?'start':'stop',id})},
- delAcc:async id=>{if(confirm('Удалить аккаунт?')){await deleteDoc(dd('accounts',id))}},
- win:id=>{open=id;D(`<div class="top"><h3 style="margin:0">${esc(acc[id].name)}</h3><button class="s" onclick="dlg.close()">✕</button></div><div class="m" id="wi"></div><div class="chat" id="ch"></div>
-  <div class="row"><input id="msg" style="flex:1" placeholder="Сообщение или /команда" onkeydown="if(event.key=='Enter')snd('${id}')"><button onclick="snd('${id}')">Отправить</button></div>`);$('#dlg').dataset.w=id;render()},
- snd:id=>{const v=$('#msg').value;if(v){cmd({kind:'chat',id,text:v});$('#msg').value=''}},
- addW:()=>D(`<h3>Новый соло-мир</h3><p class="m">Нужна Java 17/21 на ПК. Лучше версия 1.20+. Сервер скачается с Mojang, запуская его, ты принимаешь <a style="color:var(--a)" target="_blank" href="https://aka.ms/MinecraftEULA">EULA</a>.</p><label>Название</label><input id="wn" value="Мой мир"><label>Версия</label><input id="wv" value="1.20.4"><label>Порт</label><input id="wp" value="25570"><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="s" onclick="dlg.close()">Отмена</button><button onclick="doW()">Создать (принимаю EULA)</button></div>`),
- doW:async()=>{await setDoc(dd('worlds',uid8()),{name:$('#wn').value,version:$('#wv').value.trim(),port:+$('#wp').value||25570});dlg.close()},
- wc:(id,kind)=>cmd({kind,id}),delW:async id=>{if(confirm('Удалить мир из списка? Файлы мира на ПК останутся.'))await deleteDoc(dd('worlds',id))}
-});
-</script></body></html>
+ delAcc:async id=>{if(confirm('Удалить аккаунт?')){await
